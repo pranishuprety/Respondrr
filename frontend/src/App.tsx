@@ -6,20 +6,19 @@ import RegisterPage from './components/RegisterPage'
 import PatientDashboard from './components/PatientDashboard'
 import RespondrDashboard from './components/RespondrDashboard'
 import AccountPage from './components/AccountPage'
+import VitalsPage from './components/VitalsPage'
 
 function App() {
-  const [isLoading, setIsLoading] = useState(true)
+  const [isAppBooting, setIsAppBooting] = useState(true)
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 2000)
+      setIsAppBooting(false)
+    }, 1000)
     return () => clearTimeout(timer)
   }, [])
 
-  if (isLoading) {
-    return <LoadingPage />
-  }
+  if (isAppBooting) return <LoadingPage />
 
   return (
     <Router>
@@ -29,6 +28,7 @@ function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/patient-dashboard" element={<PatientDashboard />} />
+          <Route path="/vitals" element={<VitalsPage />} />
           <Route path="/respondr-dashboard" element={<RespondrDashboard />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>

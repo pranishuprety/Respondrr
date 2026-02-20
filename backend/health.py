@@ -68,7 +68,7 @@ def normalize_sample(sample: dict, units: Optional[str] = None) -> Optional[dict
         print(f"Error normalizing sample: {e}")
         return None
 
-async def insert_realtime_data(user_id: str, metric_name: str, samples: List[dict]):
+async def insert_realtime_data(email: str, metric_name: str, samples: List[dict]):
     if not samples:
         return 0
     
@@ -77,7 +77,7 @@ async def insert_realtime_data(user_id: str, metric_name: str, samples: List[dic
         normalized = normalize_sample(s)
         if normalized:
             rows.append({
-                "user_id": user_id,
+                "email": email,
                 "metric_name": metric_name,
                 "timestamp": normalized["timestamp"],
                 "value": normalized["value"],
@@ -88,16 +88,14 @@ async def insert_realtime_data(user_id: str, metric_name: str, samples: List[dic
         return 0
 
     try:
-        # Supabase Python client uses 'upsert' which matches the ON CONFLICT logic
-        # We need to specify the columns that form the unique constraint for upsert to work correctly if needed,
-        # but the table already has a UNIQUE constraint defined in SQL.
-        response = supabase.table("health_realtime").upsert(rows, on_conflict="user_id, metric_name, timestamp, value, source").execute()
+        # Switching to plain insert to avoid ON CONFLICT errors
+        response = supabase.table("health_realtime").insert(rows).execute()
         return len(response.data)
     except Exception as e:
         print(f"Error inserting realtime data: {e}")
         return 0
 
-async def insert_aggregated_data(user_id: str, metric_name: str, samples: List[dict], units: Optional[str] = None):
+async def insert_aggregated_data(email: str, metric_name: str, samples: List[dict], units: Optional[str] = None):
     if not samples:
         return 0
     
@@ -106,7 +104,7 @@ async def insert_aggregated_data(user_id: str, metric_name: str, samples: List[d
         normalized = normalize_sample(s, units)
         if normalized:
             rows.append({
-                "user_id": user_id,
+                "email": email,
                 "metric_name": metric_name,
                 "timestamp": normalized["timestamp"],
                 "value": normalized["value"],
@@ -117,7 +115,8 @@ async def insert_aggregated_data(user_id: str, metric_name: str, samples: List[d
         return 0
 
     try:
-        response = supabase.table("health_aggregated").upsert(rows, on_conflict="user_id, metric_name, timestamp, value, units").execute()
+        # Switching to plain insert to avoid ON CONFLICT errors
+        response = supabase.table("health_aggregated").insert(rows).execute()
         return len(response.data)
     except Exception as e:
         print(f"Error inserting aggregated data: {e}")
@@ -142,7 +141,7 @@ def normalize_sleep_sample(sample: dict) -> Optional[dict]:
         print(f"Error normalizing sleep sample: {e}")
         return None
 
-async def upsert_sleep_data(user_id: str, samples: List[dict]):
+async def upsert_sleep_data(email: str, samples: List[dict]):
     if not samples:
         return 0
     
@@ -150,14 +149,14 @@ async def upsert_sleep_data(user_id: str, samples: List[dict]):
     for s in samples:
         normalized = normalize_sleep_sample(s)
         if normalized:
-            normalized["user_id"] = user_id
+            normalized["email"] = email
             rows.append(normalized)
     
     if not rows:
         return 0
 
     try:
-        response = supabase.table("sleep_analysis").upsert(rows, on_conflict="user_id, record_date").execute()
+        response = supabase.table("sleep_analysis").insert(rows).execute()
         return len(response.data)
     except Exception as e:
         # Fallback if table doesn't exist or constraint is different

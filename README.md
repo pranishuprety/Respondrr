@@ -55,7 +55,7 @@ Respondr is an AI-powered emergency response platform designed to bridge the cri
    ```bash
    python main.py
    ```
-   The API will be available at `http://localhost:8000`.
+   The API will be available at `http://localhost:3001`.
 
 ## 🏗️ Tech Stack
 - **Frontend**: React, TypeScript, Tailwind CSS v4, Lucide React, Axios, Supabase JS.

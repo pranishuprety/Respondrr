@@ -10,6 +10,7 @@ from health import (
     fetch_metric,
     upsert_sleep_data
 )
+from dashboard import router as dashboard_router
 
 app = FastAPI(title="Respondr API")
 
@@ -21,6 +22,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(dashboard_router)
 
 @app.get("/")
 async def root():
@@ -36,8 +39,28 @@ async def get_me(user=Depends(get_current_user)):
     return {"user": user, "profile": profile.data}
 
 @app.post("/api/data")
-async def ingest_health_data(request: Request, user=Depends(get_current_user)):
+async def ingest_health_data(request: Request):
     try:
+        # Check for authentication header
+        auth_header = request.headers.get("Authorization")
+        email = None
+        
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                user = supabase.auth.get_user(token)
+                if user.user:
+                    email = user.user.email
+            except:
+                pass
+        
+        # Fallback to default email if no token (for phone app local testing)
+        if not email:
+            email = os.getenv("DEFAULT_EMAIL")
+            if not email:
+                return {"success": False, "message": "Unauthorized - No user session and no DEFAULT_EMAIL configured"}
+            print(f"Incoming data from phone - using default email: {email}")
+        
         body = await request.json()
         data = body.get("data", {})
         metrics = data.get("metrics", [])
@@ -56,9 +79,9 @@ async def ingest_health_data(request: Request, user=Depends(get_current_user)):
             units = metric.get("units")
             
             if name in realtime_metrics:
-                total_inserted += await insert_realtime_data(user.id, name, samples)
+                total_inserted += await insert_realtime_data(email, name, samples)
             else:
-                total_inserted += await insert_aggregated_data(user.id, name, samples, units)
+                total_inserted += await insert_aggregated_data(email, name, samples, units)
 
         return {
             "success": True, 
@@ -71,6 +94,7 @@ async def ingest_health_data(request: Request, user=Depends(get_current_user)):
 @app.post("/api/health/ingest")
 async def ingest_from_api(user=Depends(get_current_user)):
     try:
+        email = user.email
         days_back = int(os.getenv("DAYS_BACK", "7"))
         end = datetime.now()
         start = end - timedelta(days=days_back)
@@ -99,11 +123,11 @@ async def ingest_from_api(user=Depends(get_current_user)):
             samples = await fetch_metric(m["endpoint"], params, m["units"])
             if samples:
                 if m["type"] == "realtime":
-                    inserted = await insert_realtime_data(user.id, m["name"], samples)
+                    inserted = await insert_realtime_data(email, m["name"], samples)
                 elif m["type"] == "sleep":
-                    inserted = await upsert_sleep_data(user.id, samples)
+                    inserted = await upsert_sleep_data(email, samples)
                 else:
-                    inserted = await insert_aggregated_data(user.id, m["name"], samples, m["units"])
+                    inserted = await insert_aggregated_data(email, m["name"], samples, m["units"])
                 
                 total_inserted += inserted
                 results.append({"metric": m["name"], "inserted": inserted})
@@ -119,4 +143,4 @@ async def ingest_from_api(user=Depends(get_current_user)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=3001)

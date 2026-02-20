@@ -1,0 +1,199 @@
+import os
+import httpx
+from datetime import datetime, timedelta, date
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request
+from supabase_client import supabase
+from auth import get_current_user
+from collections import defaultdict
+
+router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+def calculate_pct_change(current: float, previous: float) -> float:
+    if not previous or previous == 0:
+        return 0.0
+    return ((current - previous) / previous) * 100
+
+@router.get("/summary")
+async def get_dashboard_summary(user=Depends(get_current_user)):
+    email = user.email
+    # Fallback if user has no data
+    DEFAULT_EMAIL = os.getenv("DEFAULT_EMAIL", "sraut@caldwell.edu")
+    check = supabase.table("health_realtime").select("id").eq("email", email).limit(1).execute()
+    if not check.data:
+        email = DEFAULT_EMAIL
+
+    now = datetime.now()
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+
+    rt_metrics = ['heart_rate', 'respiratory_rate', 'step_count', 'active_energy']
+    agg_metrics = [
+        'blood_oxygen_saturation', 'heart_rate_variability', 
+        'resting_heart_rate', 'time_in_daylight', 
+        'apple_exercise_time', 'basal_energy_burned'
+    ]
+
+    try:
+        # 1) Latest Vitals (KPIs) and 2) Today Summary combined
+        today_iso = today.isoformat()
+        
+        # Combined Realtime Query
+        rt_res = supabase.table("health_realtime").select("*").eq("email", email).gte("timestamp", today_iso).execute()
+        
+        # Group and calculate latest/summary
+        rt_by_metric = defaultdict(list)
+        for r in rt_res.data:
+            rt_by_metric[r["metric_name"]].append(r)
+            
+        latest_rt = {}
+        for m in rt_metrics:
+            m_data = rt_by_metric[m]
+            if m_data:
+                m_data.sort(key=lambda x: x["timestamp"], reverse=True)
+                latest_rt[m] = m_data[0]
+            else:
+                # If no data today, fetch absolute latest
+                res = supabase.table("health_realtime").select("*").eq("email", email).eq("metric_name", m).order("timestamp", desc=True).limit(1).execute()
+                latest_rt[m] = res.data[0] if res.data else None
+
+        hr_values = [r["value"] for r in rt_by_metric["heart_rate"]]
+        rr_values = [r["value"] for r in rt_by_metric["respiratory_rate"]]
+        steps_today = sum([r["value"] for r in rt_by_metric["step_count"]])
+        energy_today = sum([r["value"] for r in rt_by_metric["active_energy"]])
+        
+        # Combined Aggregated Query
+        agg_res = supabase.table("health_aggregated").select("*").eq("email", email).gte("timestamp", today_iso).execute()
+        
+        agg_by_metric = defaultdict(list)
+        for r in agg_res.data:
+            agg_by_metric[r["metric_name"]].append(r)
+            
+        latest_agg = {}
+        for m in agg_metrics:
+            m_data = agg_by_metric[m]
+            if m_data:
+                m_data.sort(key=lambda x: x["timestamp"], reverse=True)
+                latest_agg[m] = m_data[0]
+            else:
+                # Absolute latest
+                res = supabase.table("health_aggregated").select("*").eq("email", email).eq("metric_name", m).order("timestamp", desc=True).limit(1).execute()
+                latest_agg[m] = res.data[0] if res.data else None
+
+        daylight_today = sum([r["value"] for r in agg_by_metric["time_in_daylight"]])
+        exercise_today = sum([r["value"] for r in agg_by_metric["apple_exercise_time"]])
+
+        return {
+            "latest": {**latest_rt, **latest_agg},
+            "today": {
+                "avg_hr": sum(hr_values)/len(hr_values) if hr_values else 0,
+                "avg_rr": sum(rr_values)/len(rr_values) if rr_values else 0,
+                "steps": round(steps_today),
+                "active_energy": round(energy_today),
+                "daylight_min": round(daylight_today),
+                "exercise_min": round(exercise_today)
+            }
+        }
+    except Exception as e:
+        print(f"Summary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/trends")
+async def get_dashboard_trends(user=Depends(get_current_user), metric: str = "heart_rate", days: int = 7):
+    email = user.email
+    # Fallback if user has no data
+    DEFAULT_EMAIL = os.getenv("DEFAULT_EMAIL", "sraut@caldwell.edu")
+    check = supabase.table("health_realtime").select("id").eq("email", email).limit(1).execute()
+    if not check.data:
+        email = DEFAULT_EMAIL
+
+    now = datetime.now()
+    start_date = now - timedelta(days=days)
+
+    try:
+        if metric == 'heart_rate' and days == 1:
+            # Special case for 24h HR chart with more granularity
+            res = supabase.table("health_realtime").select("timestamp, value").eq("email", email).eq("metric_name", metric).gte("timestamp", start_date.isoformat()).order("timestamp").execute()
+            # For 24h we might want to downsample in Python if there's too much data
+            return res.data
+            
+        if metric in ['heart_rate', 'respiratory_rate', 'step_count', 'active_energy']:
+            res = supabase.table("health_realtime").select("timestamp, value").eq("email", email).eq("metric_name", metric).gte("timestamp", start_date.isoformat()).order("timestamp").execute()
+        else:
+            res = supabase.table("health_aggregated").select("timestamp, value").eq("email", email).eq("metric_name", metric).gte("timestamp", start_date.isoformat()).order("timestamp").execute()
+            
+        return res.data
+    except Exception as e:
+        print(f"Trends error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/vitals")
+async def get_vitals_page(user=Depends(get_current_user)):
+    email = user.email
+    # Fallback if user has no data
+    DEFAULT_EMAIL = os.getenv("DEFAULT_EMAIL", "sraut@caldwell.edu")
+    check = supabase.table("health_realtime").select("id").eq("email", email).limit(1).execute()
+    if not check.data:
+        email = DEFAULT_EMAIL
+
+    try:
+        now = datetime.now()
+        today_iso = now.date().isoformat()
+
+        rt_metrics = ['heart_rate', 'respiratory_rate', 'step_count', 'active_energy']
+        agg_metrics = [
+            'blood_oxygen_saturation', 'heart_rate_variability', 'resting_heart_rate',
+            'apple_sleeping_wrist_temperature', 'apple_exercise_time', 'apple_stand_hour',
+            'apple_stand_time', 'basal_energy_burned', 'time_in_daylight', 'headphone_audio_exposure'
+        ]
+        
+        # Cumulative metrics should show daily total
+        cumulative_metrics = [
+            'step_count', 'active_energy', 'apple_exercise_time', 
+            'apple_stand_time', 'basal_energy_burned', 'time_in_daylight'
+        ]
+
+        vitals = {}
+        
+        # Fetch Realtime (last 48h only for performance)
+        rt_res = supabase.table("health_realtime").select("metric_name, value, timestamp, source").eq("email", email).gte("timestamp", (now - timedelta(days=2)).isoformat()).execute()
+        
+        # Fetch Aggregated (last 48h only for performance)
+        agg_res = supabase.table("health_aggregated").select("metric_name, value, timestamp, units").eq("email", email).gte("timestamp", (now - timedelta(days=2)).isoformat()).execute()
+
+        # Process RT metrics
+        for m in rt_metrics:
+            m_data = [r for r in rt_res.data if r["metric_name"] == m]
+            if not m_data:
+                vitals[m] = None
+                continue
+            
+            if m in cumulative_metrics:
+                # Sum for today
+                today_total = sum([r["value"] for r in m_data if r["timestamp"].startswith(today_iso)])
+                vitals[m] = {"value": today_total, "timestamp": now.isoformat()}
+            else:
+                # Latest
+                m_data.sort(key=lambda x: x["timestamp"], reverse=True)
+                vitals[m] = m_data[0]
+
+        # Process Agg metrics
+        for m in agg_metrics:
+            m_data = [r for r in agg_res.data if r["metric_name"] == m]
+            if not m_data:
+                vitals[m] = None
+                continue
+
+            if m in cumulative_metrics:
+                # Sum for today
+                today_total = sum([r["value"] for r in m_data if r["timestamp"].startswith(today_iso)])
+                vitals[m] = {"value": today_total, "timestamp": now.isoformat(), "units": m_data[0].get("units")}
+            else:
+                # Latest
+                m_data.sort(key=lambda x: x["timestamp"], reverse=True)
+                vitals[m] = m_data[0]
+
+        return vitals
+    except Exception as e:
+        print(f"Vitals error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
