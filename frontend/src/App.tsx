@@ -35,7 +35,7 @@ function App() {
           <Route path="/doctor" element={<DoctorPage />} />
           <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
           <Route path="/doctor-messages" element={<DoctorMessagesPage />} />
-          <Route path="/alerts" element={<DoctorAlertsPage />} />
+          <Route path="/doctor-alerts" element={<DoctorAlertsPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </div>

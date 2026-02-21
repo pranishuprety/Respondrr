@@ -1,5 +1,124 @@
 # Database Schema
 
+## Execute Raw SQL Function
+
+```sql
+create or replace function public.execute_raw_sql(sql text)
+returns table (result jsonb) as $$
+declare
+  result_row record;
+begin
+  for result_row in execute sql loop
+    return query select row_to_json(result_row)::jsonb;
+  end loop;
+end;
+$$ language plpgsql;
+```
+
+## Health Metrics Analysis Function
+
+```sql
+create or replace function public.get_health_metrics(p_email text)
+returns table (
+  metric_name text,
+  last_hour_current numeric,
+  last_hour_current_ts timestamptz,
+  last_hour_avg numeric,
+  last_hour_low numeric,
+  last_hour_high numeric,
+  today_avg numeric,
+  today_low numeric,
+  today_high numeric
+) as $$
+with params as (
+  select
+    p_email::text as email,
+    now() - interval '1 hour' as hour_start,
+    now() as hour_end,
+    date_trunc('day', now()) as day_start,
+    date_trunc('day', now()) + interval '1 day' as day_end
+),
+
+all_metrics as (
+  select
+    'realtime'::text as source_table,
+    case
+      when hr.metric_name in ('heartRate','heart_rate') then 'heart_rate'
+      when hr.metric_name in ('respiratoryRate','respiratory_rate') then 'respiratory_rate'
+      when hr.metric_name in ('activeEnergy','active_energy','activeEnergyBurned') then 'active_energy'
+      when hr.metric_name in ('oxygenSaturation','blood_oxygen_saturation') then 'blood_oxygen_saturation'
+      else hr.metric_name
+    end as metric_name,
+    hr.value,
+    hr."timestamp"
+  from public.health_realtime hr, params p
+  where hr.email = p.email
+    and hr."timestamp" >= p.day_start
+    and hr."timestamp" <  p.day_end
+
+  union all
+
+  select
+    'aggregated'::text as source_table,
+    ha.metric_name,
+    ha.value,
+    ha."timestamp"
+  from public.health_aggregated ha, params p
+  where ha.email = p.email
+    and ha."timestamp" >= p.day_start
+    and ha."timestamp" <  p.day_end
+),
+
+today_stats as (
+  select metric_name, avg(value) today_avg, min(value) today_low, max(value) today_high
+  from all_metrics
+  where metric_name in (
+    'heart_rate','respiratory_rate','active_energy',
+    'apple_sleeping_wrist_temperature','blood_oxygen_saturation',
+    'heart_rate_variability','resting_heart_rate'
+  )
+  group by metric_name
+),
+
+last_hour_base as (
+  select *
+  from all_metrics, params p
+  where "timestamp" >= p.hour_start
+    and "timestamp" <= p.hour_end
+),
+
+last_hour_stats as (
+  select metric_name, avg(value) last_hour_avg, min(value) last_hour_low, max(value) last_hour_high
+  from last_hour_base
+  group by metric_name
+),
+
+last_hour_latest as (
+  select distinct on (metric_name)
+    metric_name,
+    value as last_hour_current,
+    "timestamp" as last_hour_current_ts
+  from last_hour_base
+  order by metric_name, "timestamp" desc
+)
+
+select
+  t.metric_name,
+  l.last_hour_current,
+  l.last_hour_current_ts,
+  hs.last_hour_avg,
+  hs.last_hour_low,
+  hs.last_hour_high,
+  t.today_avg,
+  t.today_low,
+  t.today_high
+from today_stats t
+left join last_hour_stats hs using (metric_name)
+left join last_hour_latest l using (metric_name)
+order by t.metric_name;
+$$ language sql stable;
+```
+
 ## Alerts Table
 
 ```sql
@@ -49,4 +168,49 @@ create trigger set_alerts_updated_at
 before update on public.alerts
 for each row
 execute function public.update_alerts_updated_at();
+```
+
+## Alerts Table RLS Policies
+
+```sql
+alter table public.alerts enable row level security;
+
+create policy "Users can view their own alerts"
+on public.alerts
+for select
+using (
+  auth.uid() = patient_id
+);
+
+create policy "Doctors can view their patients' alerts"
+on public.alerts
+for select
+using (
+  exists (
+    select 1 from public.patient_doctor_links
+    where patient_doctor_links.doctor_id = auth.uid()
+    and patient_doctor_links.patient_id = alerts.patient_id
+    and patient_doctor_links.status = 'active'
+  )
+);
+
+create policy "Doctors can acknowledge their patients' alerts"
+on public.alerts
+for update
+using (
+  exists (
+    select 1 from public.patient_doctor_links
+    where patient_doctor_links.doctor_id = auth.uid()
+    and patient_doctor_links.patient_id = alerts.patient_id
+    and patient_doctor_links.status = 'active'
+  )
+)
+with check (
+  exists (
+    select 1 from public.patient_doctor_links
+    where patient_doctor_links.doctor_id = auth.uid()
+    and patient_doctor_links.patient_id = alerts.patient_id
+    and patient_doctor_links.status = 'active'
+  )
+);
 ```

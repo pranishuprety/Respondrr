@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from utils.supabase_client import supabase
 from routes.auth import get_current_user
+from services.alerts import check_alerts_for_user
 from collections import defaultdict
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -176,4 +177,80 @@ async def get_vitals_page(user=Depends(get_current_user)):
         return vitals
     except Exception as e:
         print(f"Vitals error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/check-alerts")
+async def check_alerts(user=Depends(get_current_user)):
+    email = user.email
+    user_id = user.id
+    try:
+        result = await check_alerts_for_user(email=email, patient_id=user_id)
+        return result
+    except Exception as e:
+        print(f"Check alerts error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/doctor-alerts")
+async def get_doctor_alerts(user=Depends(get_current_user), status: str = "open"):
+    doctor_id = user.id
+    try:
+        alert_query = supabase_admin.table("alerts").select("*")
+        
+        if status:
+            alert_query = alert_query.eq("status", status)
+        
+        alerts_response = alert_query.order("created_at", desc=True).execute()
+        all_alerts = alerts_response.data or []
+        
+        print(f"[DOCTOR_ALERTS] Found {len(all_alerts)} alerts with status='{status}'")
+        for alert in all_alerts:
+            print(f"[DOCTOR_ALERTS] Alert ID: {alert['id']}, Patient: {alert['patient_email']}, Title: {alert['title']}")
+        
+        patient_ids = set(alert["patient_id"] for alert in all_alerts)
+        patient_profiles = {}
+        
+        for patient_id in patient_ids:
+            try:
+                profile_response = supabase_admin.table("profiles").select("id, full_name, email").eq("id", patient_id).single().execute()
+                if profile_response.data:
+                    patient_profiles[patient_id] = profile_response.data
+            except:
+                pass
+        
+        return {
+            "alerts": all_alerts,
+            "patients": patient_profiles,
+            "status_filter": status
+        }
+    except Exception as e:
+        print(f"Error fetching doctor alerts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(alert_id: int, user=Depends(get_current_user)):
+    doctor_id = user.id
+    try:
+        alert_response = supabase.table("alerts").select("*").eq("id", alert_id).single().execute()
+        
+        if not alert_response.data:
+            raise HTTPException(status_code=404, detail="Alert not found")
+        
+        patient_id = alert_response.data["patient_id"]
+        
+        doctor_patient_check = supabase.table("patient_doctor_links").select("*").eq("doctor_id", doctor_id).eq("patient_id", patient_id).eq("status", "active").execute()
+        
+        if not doctor_patient_check.data:
+            raise HTTPException(status_code=403, detail="You don't have access to this patient's alerts")
+        
+        update_response = supabase.table("alerts").update({
+            "status": "acknowledged",
+            "acknowledged_by": doctor_id,
+            "acknowledged_at": datetime.now().isoformat()
+        }).eq("id", alert_id).execute()
+        
+        return {"success": True, "alert": update_response.data[0] if update_response.data else None}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error acknowledging alert: {e}")
         raise HTTPException(status_code=500, detail=str(e))

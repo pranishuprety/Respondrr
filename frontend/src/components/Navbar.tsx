@@ -25,7 +25,7 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
 
   const doctorLinks = [
     { name: 'Dashboard', path: '/doctor-dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { name: 'Recent Alerts', path: '/alerts', icon: <Bell className="w-5 h-5 text-orange-500" /> },
+    { name: 'Recent Alerts', path: '/doctor-alerts', icon: <Bell className="w-5 h-5 text-orange-500" /> },
     { name: 'Messages', path: '/doctor-messages', icon: <MessageSquare className="w-5 h-5 text-green-500" /> },
     { name: 'Account', path: '/account', icon: <User className="w-5 h-5 text-blue-400" /> },
   ]

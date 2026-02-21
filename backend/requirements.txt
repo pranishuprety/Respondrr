@@ -6,3 +6,5 @@ pyjwt
 python-dotenv
 httpx
 supabase
+google-genai
+apscheduler
