@@ -1,8 +1,8 @@
 import httpx
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
-from utils.supabase_client import supabase
+from utils.supabase_client import supabase, supabase_admin
 from routes.auth import get_current_user
 from services.alerts import check_alerts_for_user
 from collections import defaultdict
@@ -194,31 +194,41 @@ async def check_alerts(user=Depends(get_current_user)):
 async def get_doctor_alerts(user=Depends(get_current_user), status: str = "open"):
     doctor_id = user.id
     try:
-        alert_query = supabase_admin.table("alerts").select("*")
+        doctor_links_response = supabase.table("patient_doctor_links").select("patient_id").eq("doctor_id", doctor_id).eq("status", "active").execute()
         
-        if status:
-            alert_query = alert_query.eq("status", status)
+        if not doctor_links_response.data:
+            return {
+                "alerts": [],
+                "patients": {},
+                "status_filter": status
+            }
         
-        alerts_response = alert_query.order("created_at", desc=True).execute()
+        doctor_patient_ids = [link["patient_id"] for link in doctor_links_response.data]
+        
+        alerts_response = supabase.table("alerts").select("*").eq("status", status).execute()
         all_alerts = alerts_response.data or []
         
-        print(f"[DOCTOR_ALERTS] Found {len(all_alerts)} alerts with status='{status}'")
-        for alert in all_alerts:
+        filtered_alerts = [alert for alert in all_alerts if alert["patient_id"] in doctor_patient_ids]
+        
+        filtered_alerts.sort(key=lambda x: x["created_at"], reverse=True)
+        
+        print(f"[DOCTOR_ALERTS] Found {len(filtered_alerts)} alerts with status='{status}' for doctor")
+        for alert in filtered_alerts:
             print(f"[DOCTOR_ALERTS] Alert ID: {alert['id']}, Patient: {alert['patient_email']}, Title: {alert['title']}")
         
-        patient_ids = set(alert["patient_id"] for alert in all_alerts)
+        patient_ids = set(alert["patient_id"] for alert in filtered_alerts)
         patient_profiles = {}
         
         for patient_id in patient_ids:
             try:
-                profile_response = supabase_admin.table("profiles").select("id, full_name, email").eq("id", patient_id).single().execute()
+                profile_response = supabase.table("profiles").select("id, full_name, email").eq("id", patient_id).single().execute()
                 if profile_response.data:
                     patient_profiles[patient_id] = profile_response.data
             except:
                 pass
         
         return {
-            "alerts": all_alerts,
+            "alerts": filtered_alerts,
             "patients": patient_profiles,
             "status_filter": status
         }
@@ -230,12 +240,12 @@ async def get_doctor_alerts(user=Depends(get_current_user), status: str = "open"
 async def acknowledge_alert(alert_id: int, user=Depends(get_current_user)):
     doctor_id = user.id
     try:
-        alert_response = supabase.table("alerts").select("*").eq("id", alert_id).single().execute()
+        alert_response = supabase.table("alerts").select("*").eq("id", alert_id).execute()
         
         if not alert_response.data:
             raise HTTPException(status_code=404, detail="Alert not found")
         
-        patient_id = alert_response.data["patient_id"]
+        patient_id = alert_response.data[0]["patient_id"]
         
         doctor_patient_check = supabase.table("patient_doctor_links").select("*").eq("doctor_id", doctor_id).eq("patient_id", patient_id).eq("status", "active").execute()
         
@@ -245,7 +255,7 @@ async def acknowledge_alert(alert_id: int, user=Depends(get_current_user)):
         update_response = supabase.table("alerts").update({
             "status": "acknowledged",
             "acknowledged_by": doctor_id,
-            "acknowledged_at": datetime.now().isoformat()
+            "acknowledged_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", alert_id).execute()
         
         return {"success": True, "alert": update_response.data[0] if update_response.data else None}
