@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import httpx
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 import google.genai as genai
@@ -188,15 +189,29 @@ Return JSON: {{"has_alerts": bool, "alerts": [{{"metric_name": str, "severity": 
 async def get_patient_id(email: str) -> Optional[str]:
     try:
         print(f"[GET_PATIENT_ID] Looking up ID for email: {email}")
-        response = supabase.table("profiles").select("id").eq("email", email).single().execute()
+        supabase_url = os.getenv("SUPABASE_URL")
+        service_key = os.getenv("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_KEY"))
         
-        if response.data:
-            patient_id = response.data.get("id")
-            print(f"[GET_PATIENT_ID] Found patient ID: {patient_id}")
-            return patient_id
-        else:
-            print(f"[GET_PATIENT_ID] No profile found for {email}")
-            return None
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{supabase_url}/auth/v1/admin/users",
+                headers={
+                    "Authorization": f"Bearer {service_key}",
+                    "apikey": service_key
+                },
+                params={"query": email}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                users = data.get("users", [])
+                for user in users:
+                    if user.get("email") == email:
+                        patient_id = user.get("id")
+                        print(f"[GET_PATIENT_ID] Found patient ID: {patient_id}")
+                        return patient_id
+        
+        print(f"[GET_PATIENT_ID] No user found for {email}")
+        return None
     except Exception as e:
         print(f"[GET_PATIENT_ID] Error: {e}")
         import traceback
@@ -335,8 +350,33 @@ async def process_alerts_for_user(email: str) -> None:
 
 async def get_all_user_emails() -> List[str]:
     try:
-        response = supabase.table("profiles").select("email").execute()
-        return [user["email"] for user in response.data if user.get("email")]
+        supabase_url = os.getenv("SUPABASE_URL")
+        service_key = os.getenv("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_KEY"))
+        
+        emails = []
+        page = 1
+        
+        async with httpx.AsyncClient() as client:
+            while True:
+                response = await client.get(
+                    f"{supabase_url}/auth/v1/admin/users",
+                    headers={
+                        "Authorization": f"Bearer {service_key}",
+                        "apikey": service_key
+                    },
+                    params={"page": page, "per_page": 100}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    users = data.get("users", [])
+                    if not users:
+                        break
+                    emails.extend([user["email"] for user in users if user.get("email")])
+                    page += 1
+                else:
+                    break
+        
+        return emails
     except Exception as e:
         print(f"Error fetching user emails: {e}")
         return []

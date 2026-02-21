@@ -1,4 +1,5 @@
 import httpx
+import os
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -6,6 +7,29 @@ from utils.supabase_client import supabase, supabase_admin
 from routes.auth import get_current_user
 from services.alerts import check_alerts_for_user
 from collections import defaultdict
+
+async def get_user_email_from_id(user_id: str) -> Optional[str]:
+    try:
+        supabase_url = os.getenv("SUPABASE_URL")
+        service_key = os.getenv("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_KEY"))
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                headers={
+                    "Authorization": f"Bearer {service_key}",
+                    "apikey": service_key
+                }
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("email")
+            else:
+                print(f"Error fetching user {user_id}: {response.status_code}")
+                return None
+    except Exception as e:
+        print(f"Error fetching email for user {user_id}: {e}")
+        return None
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -221,7 +245,7 @@ async def get_doctor_alerts(user=Depends(get_current_user), status: str = "open"
         
         for patient_id in patient_ids:
             try:
-                profile_response = supabase.table("profiles").select("id, full_name, email").eq("id", patient_id).single().execute()
+                profile_response = supabase.table("profiles").select("id, full_name").eq("id", patient_id).single().execute()
                 if profile_response.data:
                     patient_profiles[patient_id] = profile_response.data
             except:
