@@ -1,10 +1,9 @@
-import os
 import httpx
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
-from supabase_client import supabase
-from auth import get_current_user
+from utils.supabase_client import supabase
+from routes.auth import get_current_user
 from collections import defaultdict
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -17,11 +16,6 @@ def calculate_pct_change(current: float, previous: float) -> float:
 @router.get("/summary")
 async def get_dashboard_summary(user=Depends(get_current_user)):
     email = user.email
-    # Fallback if user has no data
-    DEFAULT_EMAIL = os.getenv("DEFAULT_EMAIL", "sraut@caldwell.edu")
-    check = supabase.table("health_realtime").select("id").eq("email", email).limit(1).execute()
-    if not check.data:
-        email = DEFAULT_EMAIL
 
     now = datetime.now()
     today = now.date()
@@ -53,9 +47,7 @@ async def get_dashboard_summary(user=Depends(get_current_user)):
                 m_data.sort(key=lambda x: x["timestamp"], reverse=True)
                 latest_rt[m] = m_data[0]
             else:
-                # If no data today, fetch absolute latest
-                res = supabase.table("health_realtime").select("*").eq("email", email).eq("metric_name", m).order("timestamp", desc=True).limit(1).execute()
-                latest_rt[m] = res.data[0] if res.data else None
+                latest_rt[m] = None
 
         hr_values = [r["value"] for r in rt_by_metric["heart_rate"]]
         rr_values = [r["value"] for r in rt_by_metric["respiratory_rate"]]
@@ -76,9 +68,7 @@ async def get_dashboard_summary(user=Depends(get_current_user)):
                 m_data.sort(key=lambda x: x["timestamp"], reverse=True)
                 latest_agg[m] = m_data[0]
             else:
-                # Absolute latest
-                res = supabase.table("health_aggregated").select("*").eq("email", email).eq("metric_name", m).order("timestamp", desc=True).limit(1).execute()
-                latest_agg[m] = res.data[0] if res.data else None
+                latest_agg[m] = None
 
         daylight_today = sum([r["value"] for r in agg_by_metric["time_in_daylight"]])
         exercise_today = sum([r["value"] for r in agg_by_metric["apple_exercise_time"]])
@@ -101,11 +91,6 @@ async def get_dashboard_summary(user=Depends(get_current_user)):
 @router.get("/trends")
 async def get_dashboard_trends(user=Depends(get_current_user), metric: str = "heart_rate", days: int = 7):
     email = user.email
-    # Fallback if user has no data
-    DEFAULT_EMAIL = os.getenv("DEFAULT_EMAIL", "sraut@caldwell.edu")
-    check = supabase.table("health_realtime").select("id").eq("email", email).limit(1).execute()
-    if not check.data:
-        email = DEFAULT_EMAIL
 
     now = datetime.now()
     start_date = now - timedelta(days=days)
@@ -130,11 +115,6 @@ async def get_dashboard_trends(user=Depends(get_current_user), metric: str = "he
 @router.get("/vitals")
 async def get_vitals_page(user=Depends(get_current_user)):
     email = user.email
-    # Fallback if user has no data
-    DEFAULT_EMAIL = os.getenv("DEFAULT_EMAIL", "sraut@caldwell.edu")
-    check = supabase.table("health_realtime").select("id").eq("email", email).limit(1).execute()
-    if not check.data:
-        email = DEFAULT_EMAIL
 
     try:
         now = datetime.now()

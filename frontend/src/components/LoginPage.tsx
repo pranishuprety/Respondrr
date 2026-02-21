@@ -38,15 +38,15 @@ const LoginPage = () => {
         const userRole = profile.role.toLowerCase()
         
         if (isRespondrPortal) {
-          if (userRole !== 'doctor' && userRole !== 'volunteer') {
+          if (userRole !== 'doctor') {
             await supabase.auth.signOut()
             throw new Error(`This account is registered as a ${userRole}. Please use the Patient portal.`)
           }
-          navigate('/respondr-dashboard')
+          navigate('/doctor-dashboard')
         } else {
           if (userRole !== 'patient') {
             await supabase.auth.signOut()
-            throw new Error(`This account is registered as a ${userRole}. Please use the Respondr portal.`)
+            throw new Error(`This account is registered as a ${userRole}. Please use the Doctor portal.`)
           }
           navigate('/patient-dashboard')
         }
@@ -89,7 +89,7 @@ const LoginPage = () => {
                 isRespondrPortal ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20' : 'text-slate-500 hover:text-white hover:bg-white/5'
               }`}
             >
-              Respondr Portal
+              Doctor Portal
             </button>
           </div>
 
@@ -103,7 +103,7 @@ const LoginPage = () => {
             
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">{isRespondrPortal ? 'Operator ID (Email)' : 'Patient Email'}</label>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">{isRespondrPortal ? 'Doctor Email' : 'Patient Email'}</label>
                 <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-500 transition-colors" />
                   <input
@@ -111,14 +111,14 @@ const LoginPage = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-12 pr-4 py-3 bg-slate-950 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium text-sm placeholder:text-slate-800"
-                    placeholder={isRespondrPortal ? "operator@respondr.sys" : "patient@example.com"}
+                    placeholder={isRespondrPortal ? "doctor@example.com" : "patient@example.com"}
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">{isRespondrPortal ? 'Access Key (Password)' : 'Password'}</label>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">Password</label>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-500 transition-colors" />
                   <input
@@ -168,7 +168,7 @@ const LoginPage = () => {
 
           <div className="p-8 text-center border-t border-white/10 bg-white/5 backdrop-blur-xl">
             <p className="text-slate-400 font-medium text-sm">
-              {isRespondrPortal ? 'New operator?' : 'New patient?'}{' '}
+              {isRespondrPortal ? 'New doctor?' : 'New patient?'}{' '}
               <button 
                 onClick={() => navigate('/register')}
                 className="font-black text-blue-500 hover:text-blue-400 underline decoration-blue-500/30 underline-offset-8"

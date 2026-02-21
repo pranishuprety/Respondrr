@@ -1,12 +1,11 @@
 from fastapi import Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from supabase_client import supabase
+from utils.supabase_client import supabase
 
 security = HTTPBearer()
 
 async def get_current_user(token: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        # Verify the JWT with Supabase
         user = supabase.auth.get_user(token.credentials)
         if not user.user:
             raise HTTPException(status_code=401, detail="Invalid authentication credentials")

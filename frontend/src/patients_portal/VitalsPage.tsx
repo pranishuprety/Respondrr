@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import Navbar from './Navbar'
-import LoadingPage from './LoadingPage'
+import Navbar from '../components/Navbar'
+import LoadingPage from '../components/LoadingPage'
 import { supabase } from '../lib/supabase'
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 

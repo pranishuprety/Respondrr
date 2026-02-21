@@ -2,10 +2,10 @@ import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Logo from './Logo'
-import { LogOut, User, Activity, Users, Calendar, LayoutDashboard } from 'lucide-react'
+import { LogOut, User, Activity, Users, LayoutDashboard, Bell, MessageSquare } from 'lucide-react'
 
 interface NavbarProps {
-  role: 'patient' | 'respondr'
+  role: 'patient' | 'respondr' | 'doctor'
 }
 
 const Navbar: React.FC<NavbarProps> = ({ role }) => {
@@ -19,25 +19,25 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
   const patientLinks = [
     { name: 'Dashboard', path: '/patient-dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: 'Vitals', path: '/vitals', icon: <Activity className="w-5 h-5 text-red-500" /> },
-    { name: 'Recent Doctors', path: '/recent-doctors', icon: <Users className="w-5 h-5" /> },
+    { name: 'Doctor', path: '/doctor', icon: <Users className="w-5 h-5" /> },
     { name: 'Account', path: '/account', icon: <User className="w-5 h-5 text-blue-400" /> },
   ]
 
-  const respondrLinks = [
-    { name: 'Dashboard', path: '/respondr-dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { name: 'Vitals Monitor', path: '/vitals-monitor', icon: <Activity className="w-5 h-5 text-blue-500" /> },
-    { name: 'Recent Patients', path: '/recent-patients', icon: <Users className="w-5 h-5" /> },
+  const doctorLinks = [
+    { name: 'Dashboard', path: '/doctor-dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { name: 'Recent Alerts', path: '/alerts', icon: <Bell className="w-5 h-5 text-orange-500" /> },
+    { name: 'Messages', path: '/doctor-messages', icon: <MessageSquare className="w-5 h-5 text-green-500" /> },
     { name: 'Account', path: '/account', icon: <User className="w-5 h-5 text-blue-400" /> },
   ]
 
-  const links = role === 'patient' ? patientLinks : respondrLinks
+  const links = role === 'patient' ? patientLinks : doctorLinks
 
   return (
     <nav className="bg-slate-900/80 backdrop-blur-xl border-b border-white/5 px-6 py-1 shadow-2xl fixed top-0 left-0 right-0 z-40">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Left Side: Logo */}
         <div className="flex items-center -ml-8">
-          <Link to={role === 'patient' ? '/patient-dashboard' : '/respondr-dashboard'}>
+          <Link to={role === 'patient' ? '/patient-dashboard' : '/doctor-dashboard'}>
             <Logo size={100} className="scale-75 origin-left" />
           </Link>
         </div>

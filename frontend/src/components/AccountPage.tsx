@@ -6,7 +6,7 @@ import { User, Phone, MapPin, Globe, CreditCard, Award, Save, Loader2 } from 'lu
 const AccountPage = () => {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [role, setRole] = useState<'patient' | 'respondr'>('patient')
+  const [role, setRole] = useState<'patient' | 'doctor'>('patient')
   const [profile, setProfile] = useState({
     full_name: '',
     phone: '',
@@ -29,7 +29,7 @@ const AccountPage = () => {
         
         if (data) {
           setProfile(data)
-          setRole(data.role === 'patient' ? 'patient' : 'respondr')
+          setRole(data.role === 'patient' ? 'patient' : 'doctor')
         }
       }
       setLoading(false)
@@ -60,8 +60,6 @@ const AccountPage = () => {
     setSaving(false)
   }
 
-  if (loading) return null
-
   return (
     <div className="min-h-screen bg-[#020617] text-white">
       <Navbar role={role} />
@@ -73,6 +71,11 @@ const AccountPage = () => {
       </div>
 
       <main className="max-w-3xl mx-auto pt-32 px-6 pb-12 relative z-10">
+        {loading ? (
+          <div className="flex items-center justify-center h-96">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+          </div>
+        ) : (
         <div className="bg-slate-800/50 backdrop-blur-xl rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6">
             <h1 className="text-2xl font-black tracking-tight">Account Settings</h1>
@@ -144,8 +147,8 @@ const AccountPage = () => {
               </div>
             </div>
 
-            {/* Professional Info (only for responders) */}
-            {role === 'respondr' && (
+            {/* Professional Info (only for doctors) */}
+            {role === 'doctor' && (
               <div className="pt-6 border-t border-white/5 space-y-4">
                 <h3 className="text-sm font-black flex items-center gap-2 text-blue-400 uppercase tracking-widest">
                   <Award className="w-4 h-4" /> Professional Credentials
@@ -197,6 +200,7 @@ const AccountPage = () => {
             </div>
           </form>
         </div>
+        )}
       </main>
     </div>
   )

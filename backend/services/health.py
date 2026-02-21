@@ -3,7 +3,7 @@ import httpx
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-from supabase_client import supabase
+from utils.supabase_client import supabase
 
 HEALTH_API_BASE = os.getenv("HEALTH_API_BASE", "http://127.0.0.1:9876/api")
 HEALTH_API_TOKEN = os.getenv("HEALTH_API_TOKEN")

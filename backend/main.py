@@ -2,15 +2,15 @@ import os
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from supabase_client import supabase
-from auth import get_current_user
-from health import (
+from utils.supabase_client import supabase
+from routes.auth import get_current_user
+from services.health import (
     insert_realtime_data, 
     insert_aggregated_data, 
     fetch_metric,
     upsert_sleep_data
 )
-from dashboard import router as dashboard_router
+from routes.dashboard import router as dashboard_router
 
 app = FastAPI(title="Respondr API")
 

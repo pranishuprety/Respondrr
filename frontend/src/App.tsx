@@ -3,10 +3,13 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import LoadingPage from './components/LoadingPage'
 import LoginPage from './components/LoginPage'
 import RegisterPage from './components/RegisterPage'
-import PatientDashboard from './components/PatientDashboard'
-import RespondrDashboard from './components/RespondrDashboard'
+import PatientDashboard from './patients_portal/PatientDashboard'
+import DoctorDashboard from './respondr_pages/DoctorDashboard'
+import DoctorMessagesPage from './respondr_pages/DoctorMessagesPage'
+import DoctorAlertsPage from './respondr_pages/DoctorAlertsPage'
 import AccountPage from './components/AccountPage'
-import VitalsPage from './components/VitalsPage'
+import VitalsPage from './patients_portal/VitalsPage'
+import DoctorPage from './patients_portal/DoctorPage'
 
 function App() {
   const [isAppBooting, setIsAppBooting] = useState(true)
@@ -29,7 +32,10 @@ function App() {
           <Route path="/account" element={<AccountPage />} />
           <Route path="/patient-dashboard" element={<PatientDashboard />} />
           <Route path="/vitals" element={<VitalsPage />} />
-          <Route path="/respondr-dashboard" element={<RespondrDashboard />} />
+          <Route path="/doctor" element={<DoctorPage />} />
+          <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
+          <Route path="/doctor-messages" element={<DoctorMessagesPage />} />
+          <Route path="/alerts" element={<DoctorAlertsPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </div>

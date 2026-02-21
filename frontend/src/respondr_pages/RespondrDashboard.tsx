@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import Navbar from './Navbar'
+import Navbar from '../components/Navbar'
 import { supabase } from '../lib/supabase'
 import { Activity, Shield, Users, Clock, ArrowRight, AlertTriangle, Radio } from 'lucide-react'
 
