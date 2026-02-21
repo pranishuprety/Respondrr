@@ -1,7 +1,9 @@
 import os
+import asyncio
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.background import BackgroundScheduler
 from utils.supabase_client import supabase
 from routes.auth import get_current_user
 from services.health import (
@@ -10,6 +12,7 @@ from services.health import (
     fetch_metric,
     upsert_sleep_data
 )
+from services.alerts import run_hourly_alert_check
 from routes.dashboard import router as dashboard_router
 from routes.video_calls import router as video_calls_router
 
@@ -24,6 +27,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+scheduler = BackgroundScheduler()
+
+def start_scheduler():
+    def async_wrapper():
+        asyncio.run(run_hourly_alert_check())
+    
+    scheduler.add_job(async_wrapper, "interval", hours=1)
+    scheduler.start()
+    print("Alert scheduler started - will run every hour")
+
+def stop_scheduler():
+    if scheduler.running:
+        scheduler.shutdown()
+        print("Alert scheduler shut down")
+
+app.add_event_handler("startup", start_scheduler)
+app.add_event_handler("shutdown", stop_scheduler)
+
 app.include_router(dashboard_router)
 app.include_router(video_calls_router)
 
@@ -34,6 +55,11 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.post("/admin/run-alert-check")
+async def trigger_alert_check():
+    await run_hourly_alert_check()
+    return {"status": "Alert check completed"}
 
 @app.get("/me")
 async def get_me(user=Depends(get_current_user)):

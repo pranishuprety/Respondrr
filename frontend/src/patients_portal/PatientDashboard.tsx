@@ -4,7 +4,7 @@ import LoadingPage from '../components/LoadingPage'
 import { supabase } from '../lib/supabase'
 import { 
   Activity, Heart, Footprints, 
-  Zap, Sun, Wind, Droplets, TrendingUp, AlertTriangle
+  Zap, Sun, Wind, Droplets, TrendingUp, AlertTriangle, CheckCircle, XCircle
 } from 'lucide-react'
 
 const PatientDashboard = () => {
@@ -76,15 +76,45 @@ const PatientDashboard = () => {
           </div>
         </header>
 
-        <OverviewTab summary={summary} />
+        <OverviewTab summary={summary} profile={profile} />
       </main>
     </div>
   )
 }
 
-const OverviewTab = ({ summary }: any) => {
+const OverviewTab = ({ summary, profile }: any) => {
   const latest = summary?.latest || {}
   const today = summary?.today || {}
+  const [checkingAlerts, setCheckingAlerts] = useState(false)
+  const [alertsResult, setAlertsResult] = useState<any>(null)
+  const [showAlertsModal, setShowAlertsModal] = useState(false)
+
+  const handleCheckAlerts = async () => {
+    setCheckingAlerts(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      setCheckingAlerts(false)
+      return
+    }
+
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/dashboard/check-alerts`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setAlertsResult(data)
+        setShowAlertsModal(true)
+      }
+    } catch (e) {
+      console.error('Failed to check alerts', e)
+    } finally {
+      setCheckingAlerts(false)
+    }
+  }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -122,6 +152,17 @@ const OverviewTab = ({ summary }: any) => {
           subtext="Total Burned"
           color="amber"
         />
+      </div>
+
+      <div className="mb-8">
+        <button
+          onClick={handleCheckAlerts}
+          disabled={checkingAlerts}
+          className="px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black rounded-2xl hover:shadow-xl hover:shadow-blue-500/50 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          <CheckCircle className="w-5 h-5" />
+          {checkingAlerts ? 'Checking...' : 'Check Health Status'}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -164,6 +205,106 @@ const OverviewTab = ({ summary }: any) => {
           </button>
         </div>
       </div>
+
+      {showAlertsModal && alertsResult && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-3xl font-black flex items-center gap-2">
+                {alertsResult.has_alerts ? (
+                  <>
+                    <AlertTriangle className="w-8 h-8 text-amber-500" />
+                    <span>Health Alerts Detected</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-8 h-8 text-emerald-500" />
+                    <span>Health Status Normal</span>
+                  </>
+                )}
+              </h2>
+              <button
+                onClick={() => setShowAlertsModal(false)}
+                className="text-slate-500 hover:text-white transition-colors text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            {alertsResult.summary && (
+              <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl">
+                <p className="text-sm text-slate-300">{alertsResult.summary}</p>
+              </div>
+            )}
+
+            {alertsResult.alerts && alertsResult.alerts.length > 0 && (
+              <div className="space-y-4 mb-8">
+                <h3 className="text-lg font-bold text-slate-300">Detected Alerts:</h3>
+                {alertsResult.alerts.map((alert: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className={`p-4 rounded-2xl border ${
+                      alert.severity === 'critical'
+                        ? 'bg-red-500/10 border-red-500/30'
+                        : alert.severity === 'high'
+                        ? 'bg-orange-500/10 border-orange-500/30'
+                        : alert.severity === 'medium'
+                        ? 'bg-yellow-500/10 border-yellow-500/30'
+                        : 'bg-blue-500/10 border-blue-500/30'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <h4 className="font-bold text-white">{alert.title}</h4>
+                        <p className="text-xs text-slate-400 mt-1">{alert.metric_name}</p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase ${
+                        alert.severity === 'critical'
+                          ? 'bg-red-500/30 text-red-200'
+                          : alert.severity === 'high'
+                          ? 'bg-orange-500/30 text-orange-200'
+                          : alert.severity === 'medium'
+                          ? 'bg-yellow-500/30 text-yellow-200'
+                          : 'bg-blue-500/30 text-blue-200'
+                      }`}>
+                        {alert.severity}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-300 mb-2">{alert.message}</p>
+                    <p className="text-xs text-slate-500 italic">{alert.reason}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {alertsResult.metrics && alertsResult.metrics.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-lg font-bold text-slate-300 mb-4">Metrics Data:</h3>
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {alertsResult.metrics.map((metric: any, idx: number) => (
+                    <div key={idx} className="p-3 bg-slate-800/50 rounded-lg border border-white/5 text-xs">
+                      <p className="font-bold text-white mb-1">{metric.metric_name}</p>
+                      <div className="grid grid-cols-2 gap-2 text-slate-400">
+                        <span>Last Hour Avg: {metric.last_hour_avg?.toFixed(1) || 'N/A'}</span>
+                        <span>Today Avg: {metric.today_avg?.toFixed(1) || 'N/A'}</span>
+                        <span>Last Hour Current: {metric.last_hour_current?.toFixed(1) || 'N/A'}</span>
+                        <span>Today High: {metric.today_high?.toFixed(1) || 'N/A'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowAlertsModal(false)}
+              className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-2xl hover:shadow-lg hover:shadow-blue-500/50 transition-all"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

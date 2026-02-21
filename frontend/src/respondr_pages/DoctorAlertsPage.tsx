@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import Navbar from '../components/Navbar'
 import { supabase } from '../lib/supabase'
-import { Bell, Loader2, CheckCircle, XCircle, User } from 'lucide-react'
+import { Bell, Loader2, CheckCircle, XCircle, User, AlertTriangle, Activity } from 'lucide-react'
 import VideoCallWidget from '../components/VideoCallWidget'
 import VideoCallInterface from '../components/VideoCallInterface'
 
@@ -18,8 +18,31 @@ interface PatientRequest {
   }
 }
 
+interface Alert {
+  id: number
+  patient_id: string
+  patient_email: string
+  title: string
+  message: string
+  alert_type: string
+  severity: string
+  status: string
+  acknowledged_by?: string
+  acknowledged_at?: string
+  metadata?: any
+  created_at: string
+}
+
+interface PatientInfo {
+  id: string
+  full_name: string
+  email: string
+}
+
 const DoctorAlertsPage = () => {
   const [loading, setLoading] = useState(true)
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  const [patients, setPatients] = useState<Record<string, PatientInfo>>({})
   const [pendingRequests, setPendingRequests] = useState<PatientRequest[]>([])
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string>('')
@@ -27,8 +50,59 @@ const DoctorAlertsPage = () => {
   const [activeCall, setActiveCall] = useState<any>(null)
 
   useEffect(() => {
-    fetchPendingRequests()
+    const init = async () => {
+      setLoading(true)
+      await fetchHealthAlerts()
+      await fetchPendingRequests()
+      setLoading(false)
+    }
+    init()
   }, [])
+
+  const fetchHealthAlerts = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+      const res = await fetch(`${API_BASE_URL}/api/dashboard/doctor-alerts`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        console.log('[DOCTOR_ALERTS_PAGE] Fetched alerts:', data)
+        setAlerts(data.alerts)
+        setPatients(data.patients)
+      } else {
+        console.error('[DOCTOR_ALERTS_PAGE] Failed to fetch alerts, status:', res.status)
+      }
+    } catch (e) {
+      console.error('[DOCTOR_ALERTS_PAGE] Failed to fetch health alerts', e)
+    }
+  }
+
+  const handleAcknowledgeAlert = async (alertId: number) => {
+    setActionLoading(`acknowledge-${alertId}`)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+      const res = await fetch(`${API_BASE_URL}/api/dashboard/alerts/${alertId}/acknowledge`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      })
+
+      if (res.ok) {
+        setAlerts(alerts.filter(a => a.id !== alertId))
+      }
+    } catch (e) {
+      console.error('Failed to acknowledge alert', e)
+    } finally {
+      setActionLoading(null)
+    }
+  }
 
   const fetchPendingRequests = async () => {
     try {
@@ -193,6 +267,85 @@ const DoctorAlertsPage = () => {
       </div>
 
       <main className="max-w-4xl mx-auto pt-32 px-6 pb-12 relative z-10">
+        <div className="mb-12">
+          <div className="flex items-center gap-3 mb-2">
+            <AlertTriangle className="w-6 h-6 text-red-400" />
+            <h1 className="text-3xl font-black tracking-tight">Health Alerts</h1>
+          </div>
+          <p className="text-slate-400 font-medium">Review and acknowledge patient health alerts</p>
+        </div>
+
+        {alerts.length === 0 ? (
+          <div className="bg-slate-800/50 backdrop-blur-xl rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl p-12 text-center mb-12">
+            <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
+            <h3 className="text-xl font-black text-white mb-2">All Patients Healthy!</h3>
+            <p className="text-slate-400 font-medium">No active health alerts at the moment.</p>
+          </div>
+        ) : (
+          <div className="space-y-4 mb-12">
+            {alerts.map((alert) => (
+              <div
+                key={alert.id}
+                className={`rounded-[2rem] border overflow-hidden shadow-2xl p-6 hover:border-white/20 transition-all ${
+                  alert.severity === 'critical'
+                    ? 'bg-red-900/20 border-red-500/30'
+                    : alert.severity === 'high'
+                    ? 'bg-orange-900/20 border-orange-500/30'
+                    : alert.severity === 'medium'
+                    ? 'bg-yellow-900/20 border-yellow-500/30'
+                    : 'bg-slate-800/50 border-white/10'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-start gap-4 flex-1">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      alert.severity === 'critical' ? 'bg-red-500/20 text-red-400' :
+                      alert.severity === 'high' ? 'bg-orange-500/20 text-orange-400' :
+                      alert.severity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                      'bg-blue-500/20 text-blue-400'
+                    }`}>
+                      <Activity className="w-6 h-6" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-lg font-black text-white">{alert.title}</h3>
+                        <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${
+                          alert.severity === 'critical' ? 'bg-red-500/30 text-red-200' :
+                          alert.severity === 'high' ? 'bg-orange-500/30 text-orange-200' :
+                          alert.severity === 'medium' ? 'bg-yellow-500/30 text-yellow-200' :
+                          'bg-blue-500/30 text-blue-200'
+                        }`}>
+                          {alert.severity}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-400 mb-2">
+                        Patient: <span className="text-slate-300 font-semibold">{patients[alert.patient_id]?.full_name || alert.patient_email}</span>
+                      </p>
+                      <p className="text-sm text-slate-300 mb-2">{alert.message}</p>
+                      <p className="text-xs text-slate-500">Created: {new Date(alert.created_at).toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  {alert.status !== 'acknowledged' && (
+                    <button
+                      onClick={() => handleAcknowledgeAlert(alert.id)}
+                      disabled={actionLoading?.includes(`acknowledge-${alert.id}`)}
+                      className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800/50 text-white font-black px-6 py-3 rounded-xl transition-all shadow-xl shadow-green-900/20 active:scale-95 text-xs uppercase tracking-widest flex-shrink-0 ml-4"
+                    >
+                      {actionLoading?.includes(`acknowledge-${alert.id}`) ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4" />
+                      )}
+                      Acknowledge
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="mb-10">
           <div className="flex items-center gap-3 mb-2">
             <Bell className="w-6 h-6 text-orange-400" />
