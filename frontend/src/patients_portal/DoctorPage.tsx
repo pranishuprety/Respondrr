@@ -3,6 +3,8 @@ import Navbar from '../components/Navbar'
 import { supabase } from '../lib/supabase'
 import MessagingComponent from './MessagingComponent'
 import DoctorSearchComponent from './DoctorSearchComponent'
+import VideoCallWidget from '../components/VideoCallWidget'
+import VideoCallInterface from '../components/VideoCallInterface'
 import { MessageSquare, Search } from 'lucide-react'
 
 interface Doctor {
@@ -24,6 +26,8 @@ const DoctorPage = () => {
   const [loading, setLoading] = useState(true)
   const [connectedDoctor, setConnectedDoctor] = useState<Doctor | null>(null)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [activeCall, setActiveCall] = useState<any>(null)
+  const [conversationId, setConversationId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchConnectedDoctor()
@@ -48,6 +52,17 @@ const DoctorPage = () => {
 
       if (data) {
         setConnectedDoctor(data.doctor)
+        
+        const { data: convData } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('patient_id', user.id)
+          .eq('doctor_id', data.doctor.id)
+          .single()
+        
+        if (convData) {
+          setConversationId(convData.id)
+        }
       }
     } catch {
       console.log('No connected doctor found')
@@ -56,11 +71,34 @@ const DoctorPage = () => {
     }
   }
 
+  const handleCallEnded = () => {
+    setActiveCall(null)
+  }
+
   if (loading) return null
+
+  if (activeCall) {
+    return (
+      <VideoCallInterface
+        roomUrl={activeCall.room_url}
+        onCallEnded={handleCallEnded}
+        callId={activeCall.id}
+      />
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#020617] text-white">
       <Navbar role="patient" />
+
+      {conversationId && (
+        <VideoCallWidget
+          conversationId={conversationId}
+          currentUserId={currentUser?.id || ''}
+          onCallAccepted={(callData) => setActiveCall(callData)}
+          onCallRejected={() => {}}
+        />
+      )}
 
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 rounded-full blur-[128px]" />
@@ -80,7 +118,11 @@ const DoctorPage = () => {
               </div>
             </div>
 
-            <MessagingComponent doctor={connectedDoctor} currentUser={currentUser} />
+            <MessagingComponent 
+              doctor={connectedDoctor} 
+              currentUser={currentUser}
+              onCallInitiated={(callData) => setActiveCall(callData)}
+            />
           </div>
         ) : (
           <div className="space-y-6">

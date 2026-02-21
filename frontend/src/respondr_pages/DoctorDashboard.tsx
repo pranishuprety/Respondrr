@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react'
 import Navbar from '../components/Navbar'
 import { supabase } from '../lib/supabase'
 import { Shield, Users, MessageSquare, AlertTriangle, Radio, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import VideoCallWidget from '../components/VideoCallWidget'
+import VideoCallInterface from '../components/VideoCallInterface'
 
 interface Profile {
   id: string
@@ -31,15 +33,50 @@ const DoctorDashboard = () => {
   const [messagesCount, setMessagesCount] = useState(0)
   const [pendingRequestsList, setPendingRequestsList] = useState<PatientRequest[]>([])
   const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string>('')
+  const [conversationIds, setConversationIds] = useState<number[]>([])
+  const [activeCall, setActiveCall] = useState<any>(null)
 
   useEffect(() => {
     fetchDashboardData()
   }, [])
 
+  useEffect(() => {
+    if (conversationIds.length === 0 || !currentUserId) return
+
+    const subscriptions = conversationIds.map(convId =>
+      supabase
+        .channel(`video-calls-dashboard-${convId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'video_calls',
+            filter: `conversation_id=eq.${convId}`
+          },
+          (payload) => {
+            const call = payload.new
+            if (call.started_by !== currentUserId && call.status === 'ringing') {
+              console.log('[DASHBOARD] Incoming call from:', call.started_by)
+              setActiveCall(call)
+            }
+          }
+        )
+        .subscribe()
+    )
+
+    return () => {
+      subscriptions.forEach(sub => sub.unsubscribe())
+    }
+  }, [conversationIds, currentUserId])
+
   const fetchDashboardData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+
+      setCurrentUserId(user.id)
 
       const { data: profileData } = await supabase
         .from('profiles')
@@ -74,13 +111,14 @@ const DoctorDashboard = () => {
         .select('id')
         .eq('doctor_id', user.id)
 
-      const conversationIds = conversationsData?.map(c => c.id) || []
+      const convIds = conversationsData?.map(c => c.id) || []
+      setConversationIds(convIds)
 
-      if (conversationIds.length > 0) {
+      if (convIds.length > 0) {
         const { count: messagesCount } = await supabase
           .from('messages')
           .select('*', { count: 'exact' })
-          .in('conversation_id', conversationIds)
+          .in('conversation_id', convIds)
 
         setMessagesCount(messagesCount || 0)
       } else {
@@ -149,9 +187,33 @@ const DoctorDashboard = () => {
     }
   }
 
+  const handleCallEnded = () => {
+    setActiveCall(null)
+  }
+
+  if (activeCall) {
+    return (
+      <VideoCallInterface
+        roomUrl={activeCall.room_url}
+        onCallEnded={handleCallEnded}
+        callId={activeCall.id}
+      />
+    )
+  }
+
   return (
     <div className="min-h-screen bg-[#020617] text-white">
       <Navbar role="doctor" />
+
+      {conversationIds.map(convId => (
+        <VideoCallWidget
+          key={`call-widget-${convId}`}
+          conversationId={convId}
+          currentUserId={currentUserId}
+          onCallAccepted={(callData) => setActiveCall(callData)}
+          onCallRejected={() => {}}
+        />
+      ))}
 
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 rounded-full blur-[128px]" />

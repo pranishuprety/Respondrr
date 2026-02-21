@@ -11,6 +11,7 @@ from services.health import (
     upsert_sleep_data
 )
 from routes.dashboard import router as dashboard_router
+from routes.video_calls import router as video_calls_router
 
 app = FastAPI(title="Respondr API")
 
@@ -24,6 +25,7 @@ app.add_middleware(
 )
 
 app.include_router(dashboard_router)
+app.include_router(video_calls_router)
 
 @app.get("/")
 async def root():
@@ -41,6 +43,9 @@ async def get_me(user=Depends(get_current_user)):
 @app.post("/api/data")
 async def ingest_health_data(request: Request):
     try:
+        print(f"\n=== INCOMING REQUEST ===")
+        print(f"Headers: {dict(request.headers)}")
+        
         # Check for authentication header
         auth_header = request.headers.get("Authorization")
         email = None
@@ -59,11 +64,15 @@ async def ingest_health_data(request: Request):
             email = os.getenv("DEFAULT_EMAIL")
             if not email:
                 return {"success": False, "message": "Unauthorized - No user session and no DEFAULT_EMAIL configured"}
-            print(f"Incoming data from phone - using default email: {email}")
+            print(f"Using default email: {email}")
         
         body = await request.json()
+        print(f"Request body: {body}")
+        
         data = body.get("data", {})
         metrics = data.get("metrics", [])
+        
+        print(f"Metrics received: {len(metrics)} items")
         
         if not metrics:
             return {"success": False, "message": "No metrics found in request"}

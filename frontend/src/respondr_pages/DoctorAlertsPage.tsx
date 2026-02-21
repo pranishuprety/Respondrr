@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react'
 import Navbar from '../components/Navbar'
 import { supabase } from '../lib/supabase'
 import { Bell, Loader2, CheckCircle, XCircle, User } from 'lucide-react'
+import VideoCallWidget from '../components/VideoCallWidget'
+import VideoCallInterface from '../components/VideoCallInterface'
 
 interface PatientRequest {
   id: number
@@ -20,6 +22,9 @@ const DoctorAlertsPage = () => {
   const [loading, setLoading] = useState(true)
   const [pendingRequests, setPendingRequests] = useState<PatientRequest[]>([])
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string>('')
+  const [conversationIds, setConversationIds] = useState<number[]>([])
+  const [activeCall, setActiveCall] = useState<any>(null)
 
   useEffect(() => {
     fetchPendingRequests()
@@ -30,6 +35,8 @@ const DoctorAlertsPage = () => {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+
+      setCurrentUserId(user.id)
 
       const { data } = await supabase
         .from('patient_doctor_links')
@@ -42,11 +49,62 @@ const DoctorAlertsPage = () => {
         .order('created_at', { ascending: false })
 
       setPendingRequests(data || [])
+
+      const { data: conversationsData } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('doctor_id', user.id)
+
+      const convIds = conversationsData?.map(c => c.id) || []
+      setConversationIds(convIds)
     } catch (error) {
       console.error('Error fetching pending requests:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    if (conversationIds.length === 0 || !currentUserId) return
+
+    const subscriptions = conversationIds.map(convId =>
+      supabase
+        .channel(`video-calls-alerts-${convId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'video_calls',
+            filter: `conversation_id=eq.${convId}`
+          },
+          (payload) => {
+            const call = payload.new
+            if (call.started_by !== currentUserId && call.status === 'ringing') {
+              setActiveCall(call)
+            }
+          }
+        )
+        .subscribe()
+    )
+
+    return () => {
+      subscriptions.forEach(sub => sub.unsubscribe())
+    }
+  }, [conversationIds, currentUserId])
+
+  const handleCallEnded = () => {
+    setActiveCall(null)
+  }
+
+  if (activeCall) {
+    return (
+      <VideoCallInterface
+        roomUrl={activeCall.room_url}
+        onCallEnded={handleCallEnded}
+        callId={activeCall.id}
+      />
+    )
   }
 
   const handleApproveRequest = async (requestId: number) => {
@@ -118,6 +176,16 @@ const DoctorAlertsPage = () => {
   return (
     <div className="min-h-screen bg-[#020617] text-white">
       <Navbar role="doctor" />
+
+      {conversationIds.map(convId => (
+        <VideoCallWidget
+          key={`call-widget-alerts-${convId}`}
+          conversationId={convId}
+          currentUserId={currentUserId}
+          onCallAccepted={(callData) => setActiveCall(callData)}
+          onCallRejected={() => {}}
+        />
+      ))}
 
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 rounded-full blur-[128px]" />
