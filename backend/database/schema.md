@@ -133,6 +133,8 @@ create table if not exists public.alerts (
   alert_type text not null default 'general',
   severity text not null default 'info',
   status text not null default 'open',
+  -- emergency reference (optional)
+  emergency_id uuid null references public.emergencies(id) on delete set null,
   -- doctor-side acknowledgement (optional)
   acknowledged_by uuid null references public.profiles(id),
   acknowledged_at timestamptz null,
@@ -154,6 +156,8 @@ create index if not exists alerts_status_idx
   on public.alerts(status);
 create index if not exists alerts_severity_idx
   on public.alerts(severity);
+create index if not exists alerts_emergency_id_idx
+  on public.alerts(emergency_id);
 
 create or replace function public.update_alerts_updated_at()
 returns trigger as $$
@@ -174,6 +178,8 @@ execute function public.update_alerts_updated_at();
 
 ```sql
 create extension if not exists pgcrypto;
+
+drop table if exists public.emergencies;
 
 create table if not exists public.emergencies (
   id uuid primary key default gen_random_uuid(),

@@ -269,7 +269,9 @@ async def acknowledge_alert(alert_id: int, user=Depends(get_current_user)):
         if not alert_response.data:
             raise HTTPException(status_code=404, detail="Alert not found")
         
-        patient_id = alert_response.data[0]["patient_id"]
+        alert = alert_response.data[0]
+        patient_id = alert["patient_id"]
+        metadata = alert.get("metadata", {})
         
         doctor_patient_check = supabase.table("patient_doctor_links").select("*").eq("doctor_id", doctor_id).eq("patient_id", patient_id).eq("status", "active").execute()
         
@@ -281,6 +283,27 @@ async def acknowledge_alert(alert_id: int, user=Depends(get_current_user)):
             "acknowledged_by": doctor_id,
             "acknowledged_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", alert_id).execute()
+        
+        emergency_id = alert.get("emergency_id")
+        alert_type = metadata.get("type")
+        
+        print(f"[ALERT_ACK] Alert details - ID: {alert_id}, emergency_id: {emergency_id}, type: {alert_type}")
+        
+        if emergency_id:
+            print(f"[ALERT_ACK] Resolving emergency {emergency_id}")
+            try:
+                emergency_update = supabase_admin.table("emergencies").update({
+                    "status": "resolved",
+                    "resolved_at": datetime.now(timezone.utc).isoformat()
+                }).eq("id", emergency_id).execute()
+                print(f"[ALERT_ACK] Update response: {emergency_update.data}")
+                print(f"[ALERT_ACK] Emergency {emergency_id} marked as resolved")
+            except Exception as e:
+                print(f"[ALERT_ACK] Error resolving emergency: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f"[ALERT_ACK] No emergency_id in alert, skipping emergency resolution")
         
         return {"success": True, "alert": update_response.data[0] if update_response.data else None}
     except HTTPException:
