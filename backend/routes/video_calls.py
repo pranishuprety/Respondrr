@@ -1,23 +1,21 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from datetime import datetime
+from datetime import datetime, timezone
 from services.video_call import create_room, get_room_token
-from utils.supabase_client import supabase
+from utils.supabase_client import supabase, supabase_admin
 
 router = APIRouter(prefix="/api/video", tags=["video_calls"])
 
 @router.post("/initiate-call")
 async def initiate_call(request: Request):
     try:
-        import os
-        daily_key = os.getenv("DAILY_API_KEY")
-        print(f"[VIDEO] DAILY_API_KEY configured: {bool(daily_key)}")
-        
         body = await request.json()
         conversation_id = body.get("conversation_id")
         initiated_by = body.get("initiated_by")
         
+        print(f"[VIDEO] ============================================")
         print(f"[VIDEO] Initiating call for conversation {conversation_id} by {initiated_by}")
+        print(f"[VIDEO] ============================================")
         
         if not conversation_id or not initiated_by:
             return JSONResponse(
@@ -189,14 +187,36 @@ async def reject_call(request: Request):
         print(f"[VIDEO] Rejecting call {call_id}")
         
         if not call_id:
+            print(f"[VIDEO] No call_id provided, treating as emergency rejection")
             return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": "Missing call_id"}
+                status_code=200,
+                content={"success": True, "message": "Call rejected"}
+            )
+        
+        call = supabase.table("video_calls").select("*").eq("id", call_id).single().execute()
+        
+        if not call.data:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": "Call not found"}
             )
         
         supabase.table("video_calls").update({
             "status": "missed"
         }).eq("id", call_id).execute()
+        
+        emergency_response = supabase_admin.table("emergencies").select("*").eq("video_call_id", str(call_id)).execute()
+        
+        if emergency_response.data and len(emergency_response.data) > 0:
+            emergency = emergency_response.data[0]
+            print(f"[VIDEO] Found associated emergency {emergency.get('id')}, resolving...")
+            
+            supabase_admin.table("emergencies").update({
+                "status": "resolved",
+                "resolved_at": datetime.now(timezone.utc).isoformat()
+            }).eq("id", emergency.get("id")).execute()
+            
+            print(f"[VIDEO] Emergency {emergency.get('id')} resolved due to call rejection")
         
         return JSONResponse(
             status_code=200,

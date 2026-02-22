@@ -4,6 +4,7 @@ from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from utils.supabase_client import supabase
+from services.emergency import check_vitals_and_trigger_emergency
 
 HEALTH_API_BASE = os.getenv("HEALTH_API_BASE", "http://127.0.0.1:9876/api")
 HEALTH_API_TOKEN = os.getenv("HEALTH_API_TOKEN")
@@ -89,10 +90,30 @@ async def insert_realtime_data(email: str, metric_name: str, samples: List[dict]
 
     try:
         # Switching to plain insert to avoid ON CONFLICT errors
+        print(f"\n[HEALTH_REALTIME] Inserting {len(rows)} records for {email}")
+        print(f"[HEALTH_REALTIME] Metric: {metric_name}")
+        for i, row in enumerate(rows):
+            print(f"[HEALTH_REALTIME]   [{i+1}] value={row['value']}, timestamp={row['timestamp']}")
+        
         response = supabase.table("health_realtime").insert(rows).execute()
-        return len(response.data)
+        inserted = len(response.data) if response.data else 0
+        print(f"[HEALTH_REALTIME] ✓ Successfully inserted {inserted} records")
+        
+        if inserted > 0:
+            print(f"[HEALTH_REALTIME] Triggering emergency check for {email}...")
+            try:
+                result = await check_vitals_and_trigger_emergency(email)
+                print(f"[HEALTH_REALTIME] Emergency check result: {result}")
+            except Exception as emerg_e:
+                print(f"[HEALTH_REALTIME] Error in emergency check: {emerg_e}")
+                import traceback
+                traceback.print_exc()
+        
+        return inserted
     except Exception as e:
-        print(f"Error inserting realtime data: {e}")
+        print(f"[HEALTH_REALTIME] ✗ Error inserting realtime data: {e}")
+        import traceback
+        traceback.print_exc()
         return 0
 
 async def insert_aggregated_data(email: str, metric_name: str, samples: List[dict], units: Optional[str] = None):
@@ -116,10 +137,30 @@ async def insert_aggregated_data(email: str, metric_name: str, samples: List[dic
 
     try:
         # Switching to plain insert to avoid ON CONFLICT errors
+        print(f"\n[HEALTH_AGGREGATED] Inserting {len(rows)} records for {email}")
+        print(f"[HEALTH_AGGREGATED] Metric: {metric_name}")
+        for i, row in enumerate(rows):
+            print(f"[HEALTH_AGGREGATED]   [{i+1}] value={row['value']}, timestamp={row['timestamp']}, units={row.get('units')}")
+        
         response = supabase.table("health_aggregated").insert(rows).execute()
-        return len(response.data)
+        inserted = len(response.data) if response.data else 0
+        print(f"[HEALTH_AGGREGATED] ✓ Successfully inserted {inserted} records")
+        
+        if inserted > 0:
+            print(f"[HEALTH_AGGREGATED] Triggering emergency check for {email}...")
+            try:
+                result = await check_vitals_and_trigger_emergency(email)
+                print(f"[HEALTH_AGGREGATED] Emergency check result: {result}")
+            except Exception as emerg_e:
+                print(f"[HEALTH_AGGREGATED] Error in emergency check: {emerg_e}")
+                import traceback
+                traceback.print_exc()
+        
+        return inserted
     except Exception as e:
-        print(f"Error inserting aggregated data: {e}")
+        print(f"[HEALTH_AGGREGATED] ✗ Error inserting aggregated data: {e}")
+        import traceback
+        traceback.print_exc()
         return 0
 
 def normalize_sleep_sample(sample: dict) -> Optional[dict]:

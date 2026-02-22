@@ -9,6 +9,9 @@ DAILY_API_URL = "https://api.daily.co/v1"
 async def create_room(conversation_id: int, recording_enabled: bool = False) -> dict:
     room_name = f"conv-{conversation_id}-{uuid.uuid4().hex[:8]}"
     
+    print(f"[DAILY] DAILY_API_KEY configured: {bool(DAILY_API_KEY)}")
+    print(f"[DAILY] Creating room: {room_name}")
+    
     headers = {
         "Authorization": f"Bearer {DAILY_API_KEY}",
         "Content-Type": "application/json"
@@ -25,6 +28,7 @@ async def create_room(conversation_id: int, recording_enabled: bool = False) -> 
     
     try:
         async with httpx.AsyncClient() as client:
+            print(f"[DAILY] Posting to {DAILY_API_URL}/rooms with headers: {headers}")
             response = await client.post(
                 f"{DAILY_API_URL}/rooms",
                 json=payload,
@@ -32,13 +36,17 @@ async def create_room(conversation_id: int, recording_enabled: bool = False) -> 
                 timeout=10
             )
             
+            print(f"[DAILY] Room creation response status: {response.status_code}")
+            print(f"[DAILY] Room creation response body: {response.text}")
+            
             if not response.is_success:
                 error_text = response.text
-                print(f"Daily room creation error response: {error_text}")
+                print(f"[DAILY] Room creation error: {error_text}")
                 raise Exception(f"Status {response.status_code}: {error_text}")
             
             data = response.json()
         
+        print(f"[DAILY] Room created successfully: {data.get('name')}")
         return {
             "success": True,
             "room_name": data.get("name"),
@@ -46,7 +54,9 @@ async def create_room(conversation_id: int, recording_enabled: bool = False) -> 
             "room_token": None
         }
     except Exception as e:
-        print(f"Error creating Daily room: {e}")
+        print(f"[DAILY] Error creating Daily room: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
             "error": str(e)
@@ -60,14 +70,12 @@ async def get_room_token(room_name: str, participant_name: str) -> dict:
     
     payload = {
         "room_name": room_name,
-        "properties": {
-            "user_name": participant_name
-        }
+        "user_name": participant_name
     }
     
     try:
-        # Use the correct token endpoint: /v1/token
-        url = f"{DAILY_API_URL}/token"
+        # Use the correct token endpoint: /v1/meeting-tokens
+        url = f"{DAILY_API_URL}/meeting-tokens"
         print(f"[DAILY] Attempting to get token from: {url}")
         print(f"[DAILY] Payload: {payload}")
         
