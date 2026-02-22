@@ -7,6 +7,7 @@ import PatientDashboard from './patients_portal/PatientDashboard'
 import DoctorDashboard from './respondr_pages/DoctorDashboard'
 import DoctorMessagesPage from './respondr_pages/DoctorMessagesPage'
 import DoctorAlertsPage from './respondr_pages/DoctorAlertsPage'
+import DoctorReportsPage from './respondr_pages/DoctorReportsPage'
 import AccountPage from './components/AccountPage'
 import VitalsPage from './patients_portal/VitalsPage'
 import DoctorPage from './patients_portal/DoctorPage'
@@ -36,6 +37,7 @@ function App() {
           <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
           <Route path="/doctor-messages" element={<DoctorMessagesPage />} />
           <Route path="/doctor-alerts" element={<DoctorAlertsPage />} />
+          <Route path="/doctor-reports" element={<DoctorReportsPage />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
       </div>

@@ -225,6 +225,36 @@ Video call sessions between patients and doctors.
 
 ---
 
+### emergencies
+Emergency video calls between patients and doctors.
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| id | uuid | NO | gen_random_uuid() |
+| patient_id | uuid | NO | - |
+| doctor_id | uuid | NO | - |
+| conversation_id | bigint | NO | - |
+| video_call_id | text | NO | - |
+| status | text | NO | 'active' |
+| created_at | timestamptz | NO | now() |
+| resolved_at | timestamptz | YES | NULL |
+
+**Primary Key:** id  
+**Foreign Keys:** patient_id (references profiles.id), doctor_id (references profiles.id), conversation_id (references conversations.id)  
+**Check Constraint:** status IN ('active', 'resolved', 'canceled')  
+**Indexes:**
+  - emergencies_patient_idx (patient_id)
+  - emergencies_doctor_idx (doctor_id)
+  - emergencies_conversation_idx (conversation_id)
+  - emergencies_status_idx (status)
+  - emergencies_one_active_per_conversation (conversation_id) WHERE status = 'active' [UNIQUE]  
+**Status Values:**
+  - 'active' - emergency call is in progress
+  - 'resolved' - emergency has been resolved
+  - 'canceled' - emergency call was canceled
+
+---
+
 ## Relationships
 
 ```
@@ -248,11 +278,11 @@ auth.users (1) ────── (1) profiles
                             │
             conversations (1:1 pair)
                             │
-            ┌───────────────┼───────────────┐
-            │                               │
-       (conversation_id)           (conversation_id)
-            │                               │
-        messages (N)              video_calls (N)
+            ┌───────────────┼───────────────┬───────────────┐
+            │                               │               │
+       (conversation_id)           (conversation_id)   (conversation_id)
+            │                               │               │
+        messages (N)              video_calls (N)     emergencies (N)
             │
        (message_id)
             │
@@ -265,5 +295,6 @@ auth.users (1) ────── (1) profiles
 - **messages:** Messages belong to a conversation and are sent by a profile
 - **message_attachments:** File attachments associated with messages
 - **video_calls:** Video call sessions associated with conversations, initiated by a profile
+- **emergencies:** Emergency calls associated with conversations between patients and doctors
 - **health_aggregated & health_realtime:** Associated with users via email field
 

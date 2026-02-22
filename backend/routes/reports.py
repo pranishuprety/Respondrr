@@ -2,9 +2,17 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import os
 import httpx
+import json
+from openai import OpenAI
 from fastapi import APIRouter, Depends, HTTPException, Query
 from utils.supabase_client import supabase, supabase_admin
 from routes.auth import get_current_user
+
+def get_openai_client():
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable not set")
+    return OpenAI(api_key=api_key)
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -217,4 +225,95 @@ async def get_report_summary(
         raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
     except Exception as e:
         print(f"Error fetching report summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/ai-analysis")
+async def get_ai_analysis(
+    user=Depends(get_current_user),
+    patient_id: str = Query(..., description="Patient ID"),
+    start_date: str = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(None, description="End date (YYYY-MM-DD)")
+):
+    doctor_id = user.id
+    try:
+        doctor_patient_check = supabase.table("patient_doctor_links").select("*").eq("doctor_id", doctor_id).eq("patient_id", patient_id).eq("status", "active").execute()
+        
+        if not doctor_patient_check.data:
+            raise HTTPException(status_code=403, detail="You don't have access to this patient's data")
+        
+        patient_email = await get_user_email(patient_id)
+        
+        if not patient_email:
+            raise HTTPException(status_code=404, detail="Patient email not found")
+        
+        if not start_date:
+            start_date = datetime.now().date().isoformat()
+        if not end_date:
+            end_date = (datetime.now().date() + timedelta(days=1)).isoformat()
+        
+        start_datetime = datetime.fromisoformat(start_date)
+        end_datetime = datetime.fromisoformat(end_date) + timedelta(days=1)
+        
+        realtime_metrics = ['heart_rate', 'respiratory_rate', 'active_energy']
+        aggregated_metrics = [
+            'apple_sleeping_wrist_temperature',
+            'blood_oxygen_saturation',
+            'heart_rate_variability',
+            'resting_heart_rate'
+        ]
+        
+        metrics_data = {}
+        
+        for metric in realtime_metrics:
+            response = supabase.table("health_realtime").select("value, timestamp").eq("email", patient_email).eq("metric_name", metric).gte("timestamp", start_datetime.isoformat()).lt("timestamp", end_datetime.isoformat()).execute()
+            if response.data:
+                metrics_data[metric] = response.data
+        
+        for metric in aggregated_metrics:
+            response = supabase.table("health_aggregated").select("value, timestamp").eq("email", patient_email).eq("metric_name", metric).gte("timestamp", start_datetime.isoformat()).lt("timestamp", end_datetime.isoformat()).execute()
+            if response.data:
+                metrics_data[metric] = response.data
+        
+        if not metrics_data:
+            return {
+                "analysis": "No health data available for the selected date range.",
+                "date_range": f"{start_date} to {end_date}"
+            }
+        
+        prompt = f"""You are a medical assistant analyzing patient health data. Here is the health data for the patient:
+
+Date Range: {start_date} to {end_date}
+
+Metrics Data:
+{json.dumps(metrics_data, indent=2, default=str)}
+
+Please provide a professional health analysis report for doctors based on this data. Include:
+1. Summary of key metrics
+2. Any notable patterns or trends
+3. Recommendations for monitoring or follow-up
+4. Any potential concerns to watch for
+
+Keep the report concise but informative."""
+
+        response = get_openai_client().chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a medical assistant analyzing patient health data for doctors."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        analysis_text = response.choices[0].message.content if response.choices else "Unable to generate analysis"
+        
+        return {
+            "analysis": analysis_text,
+            "patient_id": patient_id,
+            "date_range": f"{start_date} to {end_date}",
+            "metrics_included": list(metrics_data.keys())
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating AI analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))

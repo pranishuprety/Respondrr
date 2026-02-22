@@ -2,7 +2,7 @@ import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Logo from './Logo'
-import { LogOut, User, Activity, Users, LayoutDashboard, Bell, MessageSquare } from 'lucide-react'
+import { LogOut, User, Activity, Users, LayoutDashboard, Bell, MessageSquare, BarChart3 } from 'lucide-react'
 
 interface NavbarProps {
   role: 'patient' | 'respondr' | 'doctor'
@@ -27,6 +27,7 @@ const Navbar: React.FC<NavbarProps> = ({ role }) => {
     { name: 'Dashboard', path: '/doctor-dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { name: 'Recent Alerts', path: '/doctor-alerts', icon: <Bell className="w-5 h-5 text-orange-500" /> },
     { name: 'Messages', path: '/doctor-messages', icon: <MessageSquare className="w-5 h-5 text-green-500" /> },
+    { name: 'Reports', path: '/doctor-reports', icon: <BarChart3 className="w-5 h-5 text-blue-400" /> },
     { name: 'Account', path: '/account', icon: <User className="w-5 h-5 text-blue-400" /> },
   ]
 

@@ -170,6 +170,33 @@ for each row
 execute function public.update_alerts_updated_at();
 ```
 
+## Emergencies Table
+
+```sql
+create extension if not exists pgcrypto;
+
+create table if not exists public.emergencies (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.profiles(id) on delete cascade,
+  doctor_id uuid not null references public.profiles(id) on delete cascade,
+  conversation_id bigint not null references public.conversations(id) on delete cascade,
+  video_call_id text not null,
+  status text not null default 'active'
+    check (status in ('active', 'resolved', 'canceled')),
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz null
+);
+
+create index if not exists emergencies_patient_idx on public.emergencies(patient_id);
+create index if not exists emergencies_doctor_idx on public.emergencies(doctor_id);
+create index if not exists emergencies_conversation_idx on public.emergencies(conversation_id);
+create index if not exists emergencies_status_idx on public.emergencies(status);
+
+create unique index if not exists emergencies_one_active_per_conversation
+on public.emergencies(conversation_id)
+where status = 'active';
+```
+
 ## Alerts Table RLS Policies
 
 ```sql
