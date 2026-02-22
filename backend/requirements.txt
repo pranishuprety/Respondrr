@@ -6,5 +6,5 @@ pyjwt
 python-dotenv
 httpx
 supabase
-ppenai
+openai
 apscheduler
